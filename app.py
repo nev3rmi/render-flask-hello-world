@@ -3,6 +3,10 @@ from flask import Flask, jsonify, request
 from requests_html import HTMLSession
 import requests
 from threading import Thread
+import asyncio
+
+# # Set PUPPETEER_HOME to point to a writable directory
+# os.environ['PUPPETEER_HOME'] = '/tmp'
 
 app = Flask(__name__)
 
@@ -22,10 +26,8 @@ def fetch_url():
         response.raise_for_status()
     except requests.exceptions.RequestException as e:
         return jsonify({'error': str(e)}), 500
-    
     # Replace all hyphens in header keys with underscores
     modified_headers = {key.replace('-', '_'): value for key, value in response.headers.items()}
-    
     # Build the JSON response with modified headers and content
     output = {
         'headers': dict(response.headers),
@@ -37,43 +39,48 @@ def fetch_url():
     # Return the JSON response
     return jsonify(output)
 
-def fetch_and_render(url, callback):
+def run_async_render(url, callback):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    response = None
     try:
-        session = HTMLSession()
-        response = session.get(url)
-        response.html.render()
-        session.close()
-        callback(response)
+        with HTMLSession() as session:
+            response = session.get(url)
+            loop.run_until_complete(response.html.render())
+            # Safely handle session close
+            loop.run_until_complete(session.close())
     except Exception as e:
-        callback(e)
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.close()
+        callback(e, None)
+        return
+    loop.run_until_complete(loop.shutdown_asyncgens())
+    loop.close()
+    callback(None, response)
 
 @app.route('/fetch_html_session', methods=['GET'])
 def fetch_html_session():
-    # Get the URL from the query parameters
     url = request.args.get('url')
+    results = {}
     if not url:
         return jsonify({'error': 'No URL provided'}), 400
-    
-    results = {}
 
-    def on_result(response):
-        if isinstance(response, Exception):
-            results['error'] = str(response)
+    def on_result(error, response):
+        if error:
+            results['error'] = str(error)
         else:
-            results.update({
-                'headers': dict(response.headers),
-                'content': response.html.html,
-                'status_code': response.status_code,
-                'url': response.url
-            })
-    
-    # Create a Thread to fetch and render the page in the background
-    thread = Thread(target=fetch_and_render, args=(url, on_result))
+            results['headers'] = dict(response.headers)
+            results['content'] = response.html.html
+            results['status_code'] = response.status_code
+            results['url'] = response.url
+
+    # Create a Thread to fetch and render the page
+    thread = Thread(target=run_async_render, args=(url, on_result))
     thread.start()
     thread.join()  # Wait for the thread to finish
-    
+
     if 'error' in results:
         return jsonify({'error': results['error']}), 500
-    
+
     # Return the JSON response with the rendered content
     return jsonify(results)
