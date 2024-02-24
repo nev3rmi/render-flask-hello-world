@@ -1,45 +1,52 @@
-import asyncio
-from quart import Quart, jsonify, request
-from requests_html import AsyncHTMLSession
+from multiprocessing import Process, Queue
+import os
+from flask import Flask, jsonify, request
+from requests_html import HTMLSession
 
-# Create a Quart app instance
-app = Quart(__name__)
+# Set PUPPETEER_HOME to point to a writable directory
+os.environ['PUPPETEER_HOME'] = '/tmp'
+
+app = Flask(__name__)
 
 @app.route('/')
-async def home():
+def home():
     return 'Hello, World!'
 
-@app.route('/fetch_html_session', methods=['GET'])
-async def fetch_html_session():
-    url = request.args.get('url')
-    if not url:
-        return jsonify({'error': 'No URL provided'}), 400
-
+def fetch_and_render(url, queue):
     try:
-        # Create an AsyncHTMLSession object
-        session = AsyncHTMLSession()
-
-        # Fetch the content of the URL
-        response = await session.get(url)
-        
-        # Render the JavaScript on the page
-        await response.html.arender()
-
-        # Close the session
-        await session.close()
-
-        # Build the JSON response
-        output = {
+        session = HTMLSession()
+        response = session.get(url)
+        response.html.render()
+        data = {
             'headers': dict(response.headers),
             'content': response.html.html,
             'status_code': response.status_code,
-            'url': response.url
+            'url': response.url,
         }
-
-        return jsonify(output)
+        queue.put(data)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        queue.put({'error': str(e)})
+    finally:
+        session.close()
 
-# Check if we're the main module
+@app.route('/fetch_html_session', methods=['GET'])
+def fetch_html_session():
+    url = request.args.get('url')
+    if not url:
+        return jsonify({'error': 'No URL provided'}), 400
+    
+    queue = Queue()
+    process = Process(target=fetch_and_render, args=(url, queue))
+    process.start()
+    result = queue.get()  # Wait until we have the result from the process
+    process.join()
+
+    if 'error' in result:
+        # If the result is an error
+        return jsonify({'error': result['error']}), 500
+
+    # Return the JSON response with the rendered content
+    return jsonify(result)
+
 if __name__ == '__main__':
     app.run()
