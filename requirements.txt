@@ -1,4 +1,4 @@
-Flask
+quart
 Gunicorn
 requests-html
 asyncio
