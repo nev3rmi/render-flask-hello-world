@@ -1,4 +1,3 @@
 Flask
 Gunicorn
-requests-html
-asyncio
+pytrends
