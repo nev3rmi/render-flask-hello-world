@@ -124,5 +124,6 @@ def google_trends_json():
     return jsonify({'error': str(e)}), 500
 
 
+# Check if we're the main module
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=80)
+    app.run()
