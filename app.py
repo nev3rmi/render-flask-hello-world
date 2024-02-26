@@ -1,5 +1,6 @@
 from flask import Flask, jsonify, request
 from pytrends.request import TrendReq
+import requests
 
 app = Flask(__name__)
 
