@@ -5,17 +5,20 @@ import requests
 app = Flask(__name__)
 
 def get_proxies_from_url(url):
-  try:
-      response = requests.get(url)
-      response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
-      # Assuming each proxy is in a new line as 'IP:Port'
-      proxies = response.text.strip().split('\n')
-      return proxies
-  except requests.RequestException as e:
-      print(f"An error occurred while fetching proxies: {e}")
-      return []
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Raises an HTTPError if the HTTP request returned an unsuccessful status code
+        # Assuming each proxy is in a new line as 'IP:Port'
+        proxies = response.text.strip().split('\n')
+        https_proxies = ['https://' + proxy for proxy in proxies]
+        return https_proxies
+    except requests.RequestException as e:
+        print(f"An error occurred while fetching proxies: {e}")
+        return []
 
-proxies = get_proxies_from_url('https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=all&anonymity=all')
+# Example usage:
+proxies_list_url = 'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=10000&country=all&ssl=yes&anonymity=all'  # Replace with the actual URL
+proxies = get_proxies_from_url(proxies_list_url)
 
 pytrend = TrendReq(hl='en-US', tz=360, timeout=(10,25), proxies=proxies, retries=2, backoff_factor=0.1, requests_args={'verify':False})
 
